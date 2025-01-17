@@ -42,15 +42,11 @@ Clone the repository:
    ```bash
    git clone https://github.com/sylverb/firmware_update.git
    cd firmware_update
+   make download_sdk (needed on macOs only)
    make
 ```
 
-On macos you may have to run
-   ```bash
-   make download_sdk
-```
-before the make
-
 To upload built file to the sd card using jtag, run
    ```bash
-   make sdpush```
+   make sdpush
+```

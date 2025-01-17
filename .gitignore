@@ -1,0 +1,17 @@
+build
+
+Drivers
+
+venv
+
+**/.DS_Store
+
+**/*.pyc
+
+.vs/*
+.vscode/*
+*.bin
+.gdbinit
+.clang-format
+.idea/
+cmake-build-debug

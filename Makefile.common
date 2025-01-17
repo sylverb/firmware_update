@@ -1,0 +1,346 @@
+SHELL := /bin/bash
+
+######################################
+# building variables
+######################################
+# debug build?
+DEBUG ?= 1
+# optimization
+OPT ?= -Og
+
+GNWMANAGER = gnwmanager
+
+PYTHON3 ?= /usr/bin/env python3
+
+#######################################
+# paths
+#######################################
+# Build path
+BUILD_DIR ?= build
+
+# Version and URL for the STM32CubeH7 SDK
+SDK_VERSION ?= v1.11.1
+SDK_URL ?= https://raw.githubusercontent.com/STMicroelectronics/STM32CubeH7
+
+# Local path for the SDK
+SDK_DIR ?= Drivers
+
+# Patch file marker
+PATCH_MARKER = $(SDK_DIR)/.patched
+
+# SDK C sources
+SDK_C_SOURCES =  \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_cortex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dac_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dac.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dma_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dma.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dma2d.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_exti.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_flash_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_flash.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_gpio.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_hash.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_hash_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_hsem.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_i2c_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_i2c.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_jpeg.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ltdc_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ltdc.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_mdma.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ospi.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pwr_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pwr.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rtc_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rtc.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_sai_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_sai.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_spi_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_spi.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_tim_ex.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_tim.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_wwdg.c \
+Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal.c \
+
+
+# SDK ASM sources
+SDK_ASM_SOURCES =  \
+Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates/gcc/startup_stm32h7b0xx.s \
+Core/Src/memcpy-armv7m.s
+
+# SDK headers
+SDK_HEADERS = \
+Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h7b0xx.h \
+Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h7xx.h \
+Drivers/CMSIS/Device/ST/STM32H7xx/Include/system_stm32h7xx.h \
+Drivers/CMSIS/Include/cmsis_compiler.h \
+Drivers/CMSIS/Include/cmsis_gcc.h \
+Drivers/CMSIS/Include/cmsis_version.h \
+Drivers/CMSIS/Include/core_cm7.h \
+Drivers/CMSIS/Include/mpu_armv7.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_ll_adc.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_adc.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_adc_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_cortex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dac_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dac.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma2d.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_exti.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_flash_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_flash.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_gpio_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_gpio.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_hash.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_hash_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_hsem.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_i2c_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_i2c.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_jpeg.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_ltdc_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_ltdc.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_mdma.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_ospi.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_pwr_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_pwr.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_rcc_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_rcc.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_rtc_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_rtc.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_sai_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_sai.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_spi_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_spi.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim_ex.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_wwdg.h \
+Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h \
+
+
+#######################################
+# binaries
+#######################################
+PREFIX = arm-none-eabi-
+# The gcc compiler bin path can be either defined in make command via GCC_PATH variable (> make GCC_PATH=xxx)
+# either it can be added to the PATH environment variable.
+ifdef GCC_PATH
+CC   = $(GCC_PATH)/$(PREFIX)gcc
+CXX  = $(GCC_PATH)/$(PREFIX)g++
+AS   = $(GCC_PATH)/$(PREFIX)gcc -x assembler-with-cpp
+CP   = $(GCC_PATH)/$(PREFIX)objcopy
+SZ   = $(GCC_PATH)/$(PREFIX)size
+GDB  = $(GCC_PATH)/$(PREFIX)gdb
+DUMP = $(GCC_PATH)/$(PREFIX)objdump
+else
+CC   = $(PREFIX)gcc
+CXX  = $(PREFIX)g++
+AS   = $(PREFIX)gcc -x assembler-with-cpp
+CP   = $(PREFIX)objcopy
+SZ   = $(PREFIX)size
+GDB  = $(PREFIX)gdb
+DUMP = $(PREFIX)objdump
+endif
+
+HEX   = $(CP) -O ihex
+BIN   = $(CP) -O binary -S
+ECHO  = echo
+TOUCH = touch
+
+#######################################
+# CFLAGS
+#######################################
+# cpu
+CPU = -mcpu=cortex-m7 -mtune=cortex-m7
+
+# fpu
+FPU = -mfpu=fpv5-d16
+
+# float-abi
+FLOAT-ABI = -mfloat-abi=hard
+
+# mcu
+MCU = $(CPU) -mthumb -mno-unaligned-access $(FPU) $(FLOAT-ABI)
+
+# macros for gcc
+# AS defines
+AS_DEFS +=
+
+# C defines
+C_DEFS +=  \
+-D_GNU_SOURCE \
+-DUSE_HAL_DRIVER \
+-DSTM32H7B0xx \
+-DIS_LITTLE_ENDIAN \
+
+# AS includes
+AS_INCLUDES +=
+
+# C includes
+C_INCLUDES +=  \
+-ICore/Inc \
+-ICore/Inc/porting \
+-ICore/Inc/retro-go \
+-IDrivers/STM32H7xx_HAL_Driver/Inc \
+-IDrivers/STM32H7xx_HAL_Driver/Inc/Legacy \
+-IDrivers/CMSIS/Device/ST/STM32H7xx/Include \
+-IDrivers/CMSIS/Include \
+-Iretro-go-stm32/components/lupng \
+
+CXX_INCLUDES += \
+
+CFLAGS += $(CFLAGS_EXTRA)
+
+# compile gcc flags
+ASFLAGS += $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
+
+CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections -falign-functions -falign-jumps -fmerge-all-constants
+
+ifeq ($(DEBUG), 1)
+CFLAGS += -ggdb -gdwarf-2
+endif
+
+CFLAGS += -fstack-usage -Wstack-usage=20480
+
+# Generate dependency information
+CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
+
+CXXFLAGS = $(CFLAGS) $(CXX_INCLUDES) \
+-fno-rtti \
+-fno-math-errno \
+-fomit-frame-pointer \
+-fno-stack-protector \
+-fno-threadsafe-statics \
+-nostartfiles \
+-DHAVE_STDINT_H \
+-Wno-error=format-truncation
+
+#######################################
+# LDFLAGS
+#######################################
+# link script
+LDSCRIPT ?= STM32H7B0VBTx_RAM.ld
+
+# libraries
+LIBS = -lc -lm -lnosys
+CXXLIBS = -lstdc++
+LIBDIR +=
+LDFLAGS += $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) $(CXXLIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
+LDFLAGS += -Wl,--wrap=fflush
+
+# default action: build all
+all: $(BUILD_DIR) $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).bin
+
+#######################################
+# build the application
+#######################################
+# list of objects
+OBJECTS = $(addprefix $(BUILD_DIR)/core/,$(notdir $(C_SOURCES:.c=.o) $(SDK_C_SOURCES:.c=.o)))
+FATFS_OBJECTS = $(addprefix $(BUILD_DIR)/fatfs/,$(notdir $(FATFS_C_SOURCES:.c=.o)))
+
+vpath %.c $(sort $(dir $(C_SOURCES) $(FATFS_C_SOURCES) $(SDK_C_SOURCES)))
+
+# list of ASM program objects
+OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(SDK_ASM_SOURCES:.s=.o)))
+vpath %.s $(sort $(dir $(SDK_ASM_SOURCES)))
+
+# function used to generate prerequisite rules for SDK objects
+define sdk_obj_prereq_gen
+$(BUILD_DIR)/$(patsubst %.c,%.o,$(patsubst %.s,%.o,$(notdir $1))): $1
+
+endef
+# note: the blank line above is intentional
+
+# generate all object prerequisite rules
+$(eval $(foreach obj,$(SDK_C_SOURCES) $(SDK_ASM_SOURCES),$(call sdk_obj_prereq_gen,$(obj))))
+
+FORCE:
+
+$(BUILD_DIR)/%.o: %.s Makefile.common Makefile | $(BUILD_DIR)
+	$(V)$(ECHO) [ AS ] $(notdir $<)
+	$(V)$(AS) -c $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) $(FATFS_OBJECTS) Makefile.common Makefile $(LDSCRIPT)
+	$(V)$(ECHO) [ LD ] $(notdir $@)
+	$(V)$(CC) $(OBJECTS) $(FATFS_OBJECTS) $(LDFLAGS) -o $@
+
+$(BUILD_DIR)/core/%.o: %.c Makefile.common Makefile $(SDK_HEADERS) $(PATCH_MARKER) | $(BUILD_DIR)
+	$(V)$(ECHO) [ CC core ] $(notdir $<)
+	$(V)$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/core/$(notdir $(<:.c=.lst)) $< -o $@
+
+$(BUILD_DIR)/fatfs/%.o: %.c Makefile.common Makefile $(SDK_HEADERS) $(PATCH_MARKER) | $(BUILD_DIR)
+	$(V)$(ECHO) [ CC FatFs ] $(notdir $<)
+	$(V)$(CC) -c $(CFLAGS) $(FATFS_C_INCLUDES) -Wa,-a,-ad,-alms=$(BUILD_DIR)/fatfs/$(notdir $(<:.c=.lst)) $< -o $@
+
+$(BUILD_DIR):
+	$(V)mkdir $@
+	$(V)mkdir $@/core
+	$(V)mkdir $@/fatfs
+
+#######################################
+# Flashing
+#######################################
+
+ADAPTER ?= stlink
+
+reset:
+	@$(GNWMANAGER) start bank1
+.PHONY: reset
+
+sdpush: $(BUILD_DIR)/$(TARGET).bin
+	$(GNWMANAGER) sdpush --file $(BUILD_DIR)/$(TARGET).bin --dest-path "/" \
+	-- start bank1
+.PHONY: sdpush
+
+gdb: $(BUILD_DIR)/$(TARGET).elf
+	$(GDB) $< -ex "target extended-remote :3333"
+.PHONY: gdb
+
+docker_build:
+	$(V)docker build -f Dockerfile --platform linux/amd64 --tag kbeckmann/retro-go-builder .
+.PHONY: docker_build
+
+docker:
+	$(V)docker run --rm -it --privileged --user $(shell id -u):$(shell id -g) --platform linux/amd64 -v $(PWD):/opt/workdir -v /dev/bus/usb:/dev/bus/usb kbeckmann/retro-go-builder
+.PHONY: docker
+
+#######################################
+# download SDK files
+#######################################
+$(SDK_DIR)/%:
+	$(V)$(ECHO) [ WGET ] $(notdir $@)
+	$(V)wget -q $(SDK_URL)/$(SDK_VERSION)/$@ -P $(dir $@)
+
+# Rule to apply the patch
+$(PATCH_MARKER):
+	$(V)$(ECHO) [ PATCH ] Applying Drivers patch
+	$(V)patch $< < tools/drivers_enable_bank2_flashing.patch
+	$(V)touch $@
+
+.PHONY: download_sdk
+download_sdk: $(SDK_HEADERS) $(SDK_C_SOURCES) $(SDK_ASM_SOURCES) $(PATCH_MARKER)
+
+#######################################
+# clean up
+#######################################
+clean:
+	$(V)$(ECHO) [ RM ] $(BUILD_DIR)
+	$(V)-rm -fR $(BUILD_DIR)
+
+distclean: clean
+	$(V)$(ECHO) [ RM ] $(SDK_DIR)
+	$(V)rm -rf $(SDK_DIR)
+
+#######################################
+# dependencies
+#######################################
+-include $(wildcard $(BUILD_DIR)/*.d)
+
+# *** EOF ***

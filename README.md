@@ -6,6 +6,7 @@
 
 This application is detecting if an update file is present on the sd card and will install everything, giving information to the user about update progress. It handles update of files on the sd card and internal flash bank 2
 
+```mermaid
 graph TD
     A[Start] --> B[Detect SD Card hardware]
     B -->|No SD Card found| F[Boot application in Bank 2]
@@ -31,6 +32,7 @@ graph TD
 
     L --> M[Wait for button press]
     M --> F
+```
 
 ## Getting Started
 

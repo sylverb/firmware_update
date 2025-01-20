@@ -11,6 +11,7 @@
 #include "tar.h"
 #include "firmware_update.h"
 
+#define FIRMWARE_UPDATE_FILE "/firmware_update.bin"
 #define UPDATE_ARCHIVE_FILE "/gw_update.tar"
 #define INTFLASH_2_UPDATE_FILE "/update_bank2.bin"
 
@@ -123,16 +124,17 @@ void enable_screen()
 
 void firmware_update_main(void)
 {
-    bool screen_initialized;
+    bool screen_initialized = false;
+    bool update_failed = false;
 
     printf("firmware_update_main()\n");
 
-    screen_initialized = false;
     sdcard_hw_detect();
 
     if (sdcard_hw_type == SDCARD_HW_NO_SD_FOUND)
     {
         printf("No SD Card found\n");
+        update_failed = true;
     }
     else
     {
@@ -148,6 +150,7 @@ void firmware_update_main(void)
                 f_unlink(UPDATE_ARCHIVE_FILE);
             } else {
                 gw_gui_draw_text(10, 50, "Firmware update extract failed", RGB24_TO_RGB565(255, 0, 0));
+                update_failed = true;
             }
         }
         if (file_exists(INTFLASH_2_UPDATE_FILE))
@@ -158,8 +161,17 @@ void firmware_update_main(void)
             gw_gui_draw_text(10, 50, "Writing firmware in flash", RGB24_TO_RGB565(0, 255, 0));
             if (update_bank2_flash(INTFLASH_2_UPDATE_FILE, show_flash_progress_cb)) {
                 gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
+            } else {
+                gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));
+                update_failed = true;
             }
         }
+    }
+
+    // Firmware update done, delete update application
+    // to speed up boot time
+    if ((!update_failed) && (fs_mounted)) {
+        f_unlink(FIRMWARE_UPDATE_FILE);
     }
 
     // Unmount Fs and Deinit SD Card if needed

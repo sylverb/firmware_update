@@ -319,9 +319,9 @@ $(SDK_DIR)/%:
 	$(V)wget -q $(SDK_URL)/$(SDK_VERSION)/$@ -P $(dir $@)
 
 # Rule to apply the patch
-$(PATCH_MARKER):
-	$(V)$(ECHO) [ PATCH ] Applying Drivers patch
-	$(V)patch $< < tools/drivers_enable_bank2_flashing.patch
+$(PATCH_MARKER): $(SDK_HEADERS)
+	$(V)$(ECHO) [ PATCH ] Applying Drivers patch to enable Bank 2 access
+	$(V)patch $< < tools/drivers_enable_bank2_flashing.patch > /dev/null 2>&1
 	$(V)touch $@
 
 .PHONY: download_sdk

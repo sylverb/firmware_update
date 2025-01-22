@@ -11,8 +11,8 @@
 #include "tar.h"
 #include "firmware_update.h"
 
-#define FIRMWARE_UPDATE_FILE "/firmware_update.bin"
-#define UPDATE_ARCHIVE_FILE "/gw_update.tar"
+#define UPDATE_ARCHIVE_FILE "/retro-go_update.bin"
+#define APP_SIZE (1024 * 1024) /* Archive includes the application */
 #define INTFLASH_2_UPDATE_FILE "/update_bank2.bin"
 
 extern sdcard_hw_type_t sdcard_hw_type;
@@ -125,7 +125,6 @@ void enable_screen()
 void firmware_update_main(void)
 {
     bool screen_initialized = false;
-    bool update_failed = false;
 
     printf("firmware_update_main()\n");
 
@@ -134,24 +133,20 @@ void firmware_update_main(void)
     if (sdcard_hw_type == SDCARD_HW_NO_SD_FOUND)
     {
         printf("No SD Card found\n");
-        update_failed = true;
     }
     else
     {
-        if (file_exists(UPDATE_ARCHIVE_FILE))
+        enable_screen();
+        screen_initialized = true;
+        // Extract update archive in root folder
+        gw_gui_draw_text(10, 50, "Extracting files", RGB24_TO_RGB565(0, 255, 0));
+        // Archive starts with the application and 4 bytes for application payload size, skip this
+        if (extract_tar(UPDATE_ARCHIVE_FILE, "", APP_SIZE + sizeof(uint32_t), show_untar_progress_cb))
         {
-            enable_screen();
-            screen_initialized = true;
-            // Extract update archive in root folder
-            gw_gui_draw_text(10, 50, "Extracting files", RGB24_TO_RGB565(0, 255, 0));
-            if (extract_tar(UPDATE_ARCHIVE_FILE, "", show_untar_progress_cb))
-            {
-                // Delete update archive
-                f_unlink(UPDATE_ARCHIVE_FILE);
-            } else {
-                gw_gui_draw_text(10, 50, "Firmware update extract failed", RGB24_TO_RGB565(255, 0, 0));
-                update_failed = true;
-            }
+            // Delete update archive
+            f_unlink(UPDATE_ARCHIVE_FILE);
+        } else {
+            gw_gui_draw_text(10, 50, "Firmware update extract failed", RGB24_TO_RGB565(255, 0, 0));
         }
         if (file_exists(INTFLASH_2_UPDATE_FILE))
         {
@@ -163,15 +158,8 @@ void firmware_update_main(void)
                 gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
             } else {
                 gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));
-                update_failed = true;
             }
         }
-    }
-
-    // Firmware update done, delete update application
-    // to speed up boot time
-    if ((!update_failed) && (fs_mounted)) {
-        f_unlink(FIRMWARE_UPDATE_FILE);
     }
 
     // Unmount Fs and Deinit SD Card if needed

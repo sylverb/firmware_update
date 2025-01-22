@@ -9,29 +9,26 @@ This application is detecting if an update file is present on the sd card and wi
 ```mermaid
 graph TD
     A[Start] --> B[Detect SD Card hardware]
-    B -->|No SD Card found| F[Boot application in Bank 2]
-    B -->|SD Card detected| C[Check for /gw_update.tar]
+    B -->|No SD Card found| E[Boot application in Bank 2]
+    B -->|SD Card detected| C[Extract /retro-go_update.bin]
     
-    C -->|Found| D[Extract /gw_update.tar]
-    C -->|Not Found| E[Check for /update_bank2.bin]
-    
-    D -->|Extract Success| G[Delete /gw_update.tar]
-    D -->|Extract Failed| H[Show error message]
+    C -->|Extract Success| F[Delete /retro-go_update.bin]
+    C -->|Extract Failed| G[Show error message]
 
-    G --> E
-    H --> E
+    F --> D
+    G --> D
 
-    E -->|/update_bank2.bin exists| I[Flash Bank 2 with new firmware]
-    E -->|File not found| J[Unmount filesystem]
+    D[Check for /update_bank2.bin] --> |update_bank2.bin exists| H[Flash Bank 2 with new firmware and delete file]
+    D -->|File not found| I[Unmount filesystem]
 
-    I --> J
+    H --> I
 
-    J --> K{Text visible on screen?}
-    K -->|Yes| L[Show 'Press any button to continue']
-    K -->|No| F
+    I --> J{Text visible on screen?}
+    J -->|Yes| K[Show 'Press any button to continue']
+    J -->|No| E
 
-    L --> M[Wait for button press]
-    M --> F
+    K --> L[Wait for button press]
+    L --> E
 ```
 
 ## Getting Started

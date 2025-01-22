@@ -105,7 +105,7 @@ static int is_end_of_archive(const char *p) {
 }
 
 /* Extract a TAR file from FatFs */
-bool extract_tar(const char *tar_path, const char *dest_path, progress_callback_t progress_callback) {
+bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset, progress_callback_t progress_callback) {
     char block[BLOCKSIZE];
     char tmp_path[256];
     char file_path[256];
@@ -120,7 +120,14 @@ bool extract_tar(const char *tar_path, const char *dest_path, progress_callback_
         return false;
     }
 
-    unsigned long total_tar_size = f_size(&tar_file);
+    // Move to the specified data offset
+    res = f_lseek(&tar_file, data_offset);
+    if (res != FR_OK) {
+        f_close(&tar_file);
+        return false;
+    }
+
+    unsigned long total_tar_size = f_size(&tar_file) - data_offset;
     unsigned long current_position = 0;
 
     // Read blocks from the TAR file

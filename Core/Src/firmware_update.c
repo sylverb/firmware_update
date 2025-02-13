@@ -147,6 +147,7 @@ void firmware_update_main(void)
             f_unlink(UPDATE_ARCHIVE_FILE);
         } else {
             gw_gui_draw_text(10, 50, "Firmware update extract failed", RGB24_TO_RGB565(255, 0, 0));
+            fs_mounted = false;
         }
         if (file_exists(INTFLASH_2_UPDATE_FILE))
         {
@@ -178,13 +179,11 @@ void firmware_update_main(void)
     }
 
     if (screen_initialized) {
-        gw_gui_draw_text(10, 60, "Press any button to continue", RGB24_TO_RGB565(0, 255, 0));
+        gw_gui_draw_text(10, 60, "Press any button to reboot", RGB24_TO_RGB565(0, 255, 0));
         while(1) {
             uint32_t boot_buttons = buttons_get();
             if (boot_buttons) {
-                while (1) {
-                    boot_bank2();
-                }
+                HAL_NVIC_SystemReset();
             }
         }
     }

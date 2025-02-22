@@ -1,19 +1,19 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include "main.h"
 #include "stm32h7xx_hal.h"
 #include "ff.h"
 #include "gw_intflash.h"
 
-#define INTFLASH_2_UPDATE_FILE "/update_bank2.bin"
-#define INTFLASH_2_SIZE (256 << 10) // 256KB
+#define INTFLASH_BANK_SIZE (256 << 10) // 256KB
 #define BUFFER_SIZE 256
 
 static uint8_t buffer[BUFFER_SIZE];
 
 /**
- * @param bank - Must be 2.
+ * @param bank - Must be 1 or 2.
  * @param offset - Must be a multiple of 8192
  * @param size - Must be a multiple of 8192
  */
@@ -22,7 +22,7 @@ static uint32_t erase_intflash(uint8_t bank, uint32_t offset, uint32_t size)
     static FLASH_EraseInitTypeDef EraseInitStruct;
     uint32_t PAGEError;
 
-    assert(bank == 2);
+    assert(bank == 1 || bank == 2);
     assert((offset & 0x1fff) == 0);
     assert((size & 0x1fff) == 0);
 
@@ -63,24 +63,25 @@ static HAL_StatusTypeDef flash_write(uint32_t flash_address, uint8_t *data, uint
     return HAL_OK;
 }
 
-bool update_bank2_flash(const char *path, flash_progress_callback_t progress_callback)
+bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t progress_callback)
 {
     FIL file;
     UINT bytesRead;
     bool update_status = true;
     FRESULT res;
 
-    res = f_open(&file, INTFLASH_2_UPDATE_FILE, FA_READ);
+    assert(bank == 1 || bank == 2);
+    res = f_open(&file, path, FA_READ);
     if (res != FR_OK)
     {
         printf("No update file found\n");
         return false;
     }
 
-    uint32_t flash_address = FLASH_BANK2_BASE;
+    uint32_t flash_address = bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE;
 
     // File is present, erase bank
-    erase_intflash(2, FLASH_SECTOR_0, INTFLASH_2_SIZE);
+    erase_intflash(bank, FLASH_SECTOR_0, INTFLASH_BANK_SIZE);
 
     do
     {
@@ -99,11 +100,19 @@ bool update_bank2_flash(const char *path, flash_progress_callback_t progress_cal
             break;
         }
 
+        // Verify written data
+        if (memcmp((void *)flash_address, buffer, bytesRead) != 0)
+        {
+            update_status = false;
+            printf("Verification error @0x%lx - %d\n", flash_address, bytesRead);
+            break;
+        }
+
         // Next block
         flash_address += bytesRead;
 
         if (progress_callback) {
-            unsigned int percentage = (unsigned int)(((flash_address-FLASH_BANK2_BASE) * 100) / f_size(&file));
+            unsigned int percentage = (unsigned int)(((flash_address-(bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE)) * 100) / f_size(&file));
             progress_callback(percentage);
         }
     } while (bytesRead == BUFFER_SIZE);
@@ -112,7 +121,7 @@ bool update_bank2_flash(const char *path, flash_progress_callback_t progress_cal
     if (update_status)
     {
         printf("Flashing done, delete update file\n");
-        f_unlink(INTFLASH_2_UPDATE_FILE);
+        f_unlink(path);
     }
     else
     {

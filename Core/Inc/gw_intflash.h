@@ -4,4 +4,4 @@
 
 typedef void (*flash_progress_callback_t)(unsigned int percentage);
 
-bool update_bank2_flash(const char *path, flash_progress_callback_t progress_callback);
+bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t progress_callback);

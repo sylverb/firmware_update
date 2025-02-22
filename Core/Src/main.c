@@ -26,6 +26,7 @@
 #include "gw_buttons.h"
 #include "gw_lcd.h"
 #include "gw_sdcard.h"
+#include "gw_flash.h"
 #include "gw_gui.h"
 #include "gw_linker.h"
 #include "firmware_update.h"
@@ -293,6 +294,9 @@ int main(void)
 
   SCB_EnableICache();
   SCB_EnableDCache();
+
+  // Initialize the external flash
+  OSPI_Init(&hospi1);
 
   bq24072_init();
 

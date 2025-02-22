@@ -7,14 +7,20 @@
 #include "gw_buttons.h"
 #include "main.h"
 #include "gw_intflash.h"
+#include "gw_flash.h"
+#include "bq24072.h"
 #include "ff.h"
 #include "tar.h"
 #include "firmware_update.h"
 
 #define UPDATE_ARCHIVE_FILE "/retro-go_update.bin"
 #define APP_SIZE (1024 * 1024) /* Archive includes the application */
+#define INTFLASH_1_UPDATE_FILE "/update_bank1.bin"
 #define INTFLASH_2_UPDATE_FILE "/update_bank2.bin"
+#define EXTFLASH_UPDATE_FILE "/update_extflash.bin"
+#define MIN_BATTERY_LEVEL 30
 
+extern bool fs_mounted;
 extern sdcard_hw_type_t sdcard_hw_type;
 
 static FATFS FatFs; // Fatfs handle
@@ -29,6 +35,7 @@ void sdcard_hw_detect()
     cause = f_mount(&FatFs, (const TCHAR *)"", 1);
     if (cause == FR_OK)
     {
+        fs_mounted = true;
         return;
     }
     else
@@ -42,6 +49,7 @@ void sdcard_hw_detect()
     cause = f_mount(&FatFs, (const TCHAR *)"", 1);
     if (cause == FR_OK)
     {
+        fs_mounted = true;
         return;
     }
     else
@@ -125,8 +133,41 @@ void enable_screen()
 void firmware_update_main(void)
 {
     bool screen_initialized = false;
+    int battery_level, updated_battery_level = -1;
+    char battery_level_str[100];
 
     printf("firmware_update_main()\n");
+
+    // Check battery level
+    for (int i = 0; i < 100; i++)
+    {
+        battery_level = bq24072_get_percent_filtered();
+        HAL_Delay(2);
+    }
+    if (battery_level < MIN_BATTERY_LEVEL)
+    {
+        enable_screen();
+        screen_initialized = true;
+        gw_gui_draw_text(10, 50, "Battery level too low", RGB24_TO_RGB565(255, 0, 0));
+        sprintf(battery_level_str, "Charge it above %d%% to continue", MIN_BATTERY_LEVEL);
+        gw_gui_draw_text(10, 60, battery_level_str, RGB24_TO_RGB565(255, 0, 0));
+
+        while (battery_level < MIN_BATTERY_LEVEL)
+        {
+            if (updated_battery_level != battery_level)
+            {
+                updated_battery_level = battery_level;
+                sprintf(battery_level_str, "(%d%%)", battery_level);
+                gw_gui_draw_text(185, 50, battery_level_str, RGB24_TO_RGB565(255, 0, 0));
+            }
+            HAL_Delay(15);
+            battery_level = bq24072_get_percent_filtered();
+            uint32_t boot_buttons = buttons_get();
+            if (boot_buttons & B_POWER) {
+                HAL_NVIC_SystemReset();
+            }
+        }
+    }
 
     sdcard_hw_detect();
 
@@ -149,16 +190,46 @@ void firmware_update_main(void)
             gw_gui_draw_text(10, 50, "Firmware update extract failed", RGB24_TO_RGB565(255, 0, 0));
             fs_mounted = false;
         }
-        if (file_exists(INTFLASH_2_UPDATE_FILE))
+        // Start with external flash update as it is mandatory to have correct data in extflash
+        // for original firmware to boot (on Zelda version at least).
+        // If extflash update fails, we should not update internal flash
+        if (fs_mounted && file_exists(EXTFLASH_UPDATE_FILE))
+        {
+            enable_screen();
+            screen_initialized = true;
+            // Flash external flash
+            gw_gui_draw_text(10, 50, "Writing firmware in external flash", RGB24_TO_RGB565(0, 255, 0));
+            if (update_extflash(EXTFLASH_UPDATE_FILE, show_flash_progress_cb)) {
+                gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
+            } else {
+                gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));
+                fs_mounted = false;
+            }
+        }
+        if (fs_mounted && file_exists(INTFLASH_1_UPDATE_FILE))
+        {
+            enable_screen();
+            screen_initialized = true;
+            // Flash bank 1
+            gw_gui_draw_text(10, 50, "Writing firmware in intflash bank1", RGB24_TO_RGB565(0, 255, 0));
+            if (update_intflash(1, INTFLASH_1_UPDATE_FILE, show_flash_progress_cb)) {
+                gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
+            } else {
+                gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));
+                fs_mounted = false;
+            }
+        }
+        if (fs_mounted && file_exists(INTFLASH_2_UPDATE_FILE))
         {
             enable_screen();
             screen_initialized = true;
             // Flash bank 2
-            gw_gui_draw_text(10, 50, "Writing firmware in flash", RGB24_TO_RGB565(0, 255, 0));
-            if (update_bank2_flash(INTFLASH_2_UPDATE_FILE, show_flash_progress_cb)) {
+            gw_gui_draw_text(10, 50, "Writing firmware in intflash bank2", RGB24_TO_RGB565(0, 255, 0));
+            if (update_intflash(2, INTFLASH_2_UPDATE_FILE, show_flash_progress_cb)) {
                 gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
             } else {
                 gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));
+                fs_mounted = false;
             }
         }
     }

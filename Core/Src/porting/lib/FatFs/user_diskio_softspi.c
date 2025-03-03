@@ -509,6 +509,37 @@ DRESULT USER_SOFTSPI_read(
     }
     else
     {
+        do
+        {
+            /* READ_SINGLE_BLOCK */
+            if (send_cmd(READ_SINGLE_BLOCK, sector).r0)
+            {
+                return RES_ERROR;
+            }
+
+            // We would fail on watchdog if something is wrong here
+            do
+            {
+                SoftSpi_WriteDummyRead(sd.spi, &ret, 1);
+            } while (ret != START_BLOCK_TOKEN); // Fix : add timeout
+
+            SoftSpi_WriteDummyRead(sd.spi, buff, BLOCK_SIZE);
+
+            finish_read_cmd();
+
+            buff += BLOCK_SIZE;
+            if (!(CardType & CT_BLOCK))
+            {
+                sector += 512;
+            }
+            else
+            {
+                sector++;
+            }
+
+        } while (--count);
+
+#if 0 // For an unknown reason, this code is not working for some people, so we use the previous code instead
         if (send_cmd(READ_MULTIPLE_BLOCK, sector).r0)
         {
             return RES_ERROR;
@@ -529,6 +560,7 @@ DRESULT USER_SOFTSPI_read(
 
         /* STOP_TRANSMISSION */
         send_cmd(SEND_STOP_TRANSMISSION, 0);
+#endif
     }
 
     /* Idle */

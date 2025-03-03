@@ -92,9 +92,7 @@ void boot_bank2(void)
     }
     else
     {
-        while(1) {
-            wdog_refresh();
-        }
+        while(1) {};
     }
 }
 
@@ -123,6 +121,7 @@ void enable_screen()
 
     if (!enabled)
     {
+        wdog_refresh();
         gw_gui_fill(0x0000);
         lcd_backlight_set(180);
         gw_gui_draw();
@@ -141,6 +140,7 @@ void firmware_update_main(void)
     // Check battery level
     for (int i = 0; i < 100; i++)
     {
+        wdog_refresh();
         battery_level = bq24072_get_percent_filtered();
         HAL_Delay(2);
     }
@@ -154,6 +154,7 @@ void firmware_update_main(void)
 
         while (battery_level < MIN_BATTERY_LEVEL)
         {
+            wdog_refresh();
             if (updated_battery_level != battery_level)
             {
                 updated_battery_level = battery_level;
@@ -252,6 +253,7 @@ void firmware_update_main(void)
     if (screen_initialized) {
         gw_gui_draw_text(10, 60, "Press any button to reboot", RGB24_TO_RGB565(0, 255, 0));
         while(1) {
+            wdog_refresh();
             uint32_t boot_buttons = buttons_get();
             if (boot_buttons) {
                 HAL_NVIC_SystemReset();

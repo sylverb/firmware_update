@@ -300,6 +300,8 @@ int main(void)
 
   bq24072_init();
 
+  wdog_enable();
+
   firmware_update_main();
 
   while (1)

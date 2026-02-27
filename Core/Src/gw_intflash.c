@@ -8,6 +8,7 @@
 #include "gw_intflash.h"
 
 #define INTFLASH_BANK_SIZE (256 << 10) // 256KB
+#define INTFLASH_SECTOR_SIZE 8192      // 8KB, must match erase_intflash
 #define BUFFER_SIZE 256
 
 static uint8_t buffer[BUFFER_SIZE];
@@ -63,7 +64,7 @@ static HAL_StatusTypeDef flash_write(uint32_t flash_address, uint8_t *data, uint
     return HAL_OK;
 }
 
-bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t progress_callback)
+bool update_intflash(uint8_t bank, uint32_t offset, const char *path, flash_progress_callback_t progress_callback)
 {
     FIL file;
     UINT bytesRead;
@@ -71,6 +72,8 @@ bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t p
     FRESULT res;
 
     assert(bank == 1 || bank == 2);
+    assert((offset & 0xf) == 0); /* offset must be 16-byte aligned for FLASHWORD programming */
+
     res = f_open(&file, path, FA_READ);
     if (res != FR_OK)
     {
@@ -78,11 +81,27 @@ bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t p
         return false;
     }
 
-    uint32_t flash_address = bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE;
+    uint32_t file_size = (uint32_t)f_size(&file);
+    uint32_t bank_base = bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE;
 
-    // File is present, erase bank
-    erase_intflash(bank, FLASH_SECTOR_0, INTFLASH_BANK_SIZE);
+    /* Check we don't write past the end of the bank */
+    if (offset > INTFLASH_BANK_SIZE || file_size > INTFLASH_BANK_SIZE - offset)
+    {
+        printf("File too large for bank: offset=%lu size=%lu bank_size=%u\n",
+               (unsigned long)offset, (unsigned long)file_size, INTFLASH_BANK_SIZE);
+        f_close(&file);
+        return false;
+    }
 
+    /* Erase only the sectors that will be written (sector size 8KB) */
+    uint32_t sector_start = (offset / INTFLASH_SECTOR_SIZE) * INTFLASH_SECTOR_SIZE;
+    uint32_t end_offset = offset + file_size;
+    uint32_t sector_end = ((end_offset + INTFLASH_SECTOR_SIZE - 1) / INTFLASH_SECTOR_SIZE) * INTFLASH_SECTOR_SIZE;
+    uint32_t erase_size = sector_end - sector_start;
+
+    erase_intflash(bank, sector_start, erase_size);
+
+    uint32_t flash_address = bank_base + offset;
     do
     {
         res = f_read(&file, buffer, BUFFER_SIZE, &bytesRead);
@@ -92,27 +111,31 @@ bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t p
             break;
         }
 
-        // Write block in internal flash bank
+        if (bytesRead == 0)
+            break;
+
+        /* Write block in internal flash bank */
         if (flash_write(flash_address, buffer, bytesRead) != HAL_OK)
         {
             update_status = false;
-            printf("Flash writing error @0x%lx - %d\n", flash_address, bytesRead);
+            printf("Flash writing error @0x%lx - %u\n", (unsigned long)flash_address, (unsigned)bytesRead);
             break;
         }
 
-        // Verify written data
+        /* Verify written data */
         if (memcmp((void *)flash_address, buffer, bytesRead) != 0)
         {
             update_status = false;
-            printf("Verification error @0x%lx - %d\n", flash_address, bytesRead);
+            printf("Verification error @0x%lx - %u\n", (unsigned long)flash_address, (unsigned)bytesRead);
             break;
         }
 
-        // Next block
         flash_address += bytesRead;
 
-        if (progress_callback) {
-            unsigned int percentage = (unsigned int)(((flash_address-(bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE)) * 100) / f_size(&file));
+        if (progress_callback && file_size > 0)
+        {
+            uint32_t written = flash_address - bank_base - offset;
+            unsigned int percentage = (unsigned int)((written * 100) / file_size);
             progress_callback(percentage);
         }
     } while (bytesRead == BUFFER_SIZE);
@@ -120,7 +143,7 @@ bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t p
     f_close(&file);
     if (update_status)
     {
-        printf("Flashing done, delete update file\n");
+        printf("Flashing done, delete update file %s\n", path);
         f_unlink(path);
     }
     else

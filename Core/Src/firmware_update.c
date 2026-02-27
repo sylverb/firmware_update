@@ -8,6 +8,7 @@
 #include "main.h"
 #include "gw_intflash.h"
 #include "gw_flash.h"
+#include "gw_ofw.h"
 #include "bq24072.h"
 #include "ff.h"
 #include "tar.h"
@@ -16,6 +17,9 @@
 #define UPDATE_ARCHIVE_FILE "/retro-go_update.bin"
 #define APP_SIZE (1024 * 1024) /* Archive includes the application */
 #define INTFLASH_1_UPDATE_FILE "/update_bank1.bin"
+#define BOOTLOADER_FILE "/gnw_bootloader.bin"
+#define BOOTLOADER_DUALBOOT_FILE "/gnw_bootloader_0x08032000.bin"
+#define BOOTLOADER_DUALBOOT_OFFSET 0x32000
 #define INTFLASH_2_UPDATE_FILE "/update_bank2.bin"
 #define EXTFLASH_UPDATE_FILE "/update_extflash.bin"
 #define MIN_BATTERY_LEVEL 30
@@ -108,7 +112,7 @@ void show_untar_progress_cb(unsigned int percentage, const char *file_name) {
 
 void show_flash_progress_cb(unsigned int percentage) {
     gw_gui_draw_progress_bar(10, 60, 300, 8, percentage, RGB24_TO_RGB565(255, 255, 255), RGB24_TO_RGB565(255, 255, 255));
-    printf("Flashing progress: %d%%\n", percentage);
+//    printf("Flashing progress: %d%%\n", percentage);
     if (percentage == 100) {
         // Delete progress bar
         gw_gui_draw_text(10, 60, "", RGB24_TO_RGB565(255, 255, 255));
@@ -207,13 +211,50 @@ void firmware_update_main(void)
                 fs_mounted = false;
             }
         }
+        if (fs_mounted && file_exists(BOOTLOADER_FILE))
+        {
+            // If not in dualboot mode, update bootloader in start of bank1
+            if (!get_ofw_is_present()) {
+                enable_screen();
+                screen_initialized = true;
+                // Flash bank 1
+                gw_gui_draw_text(10, 50, "Updating bootloader", RGB24_TO_RGB565(0, 255, 0));
+                if (update_intflash(1, 0, BOOTLOADER_FILE, show_flash_progress_cb)) {
+                    gw_gui_draw_text(10, 50, "Bootloader update done", RGB24_TO_RGB565(0, 255, 0));
+                } else {
+                    gw_gui_draw_text(10, 50, "Bootloader update failed", RGB24_TO_RGB565(255, 0, 0));
+                    fs_mounted = false;
+                }
+            } else {
+                // delete useless bootloader file
+                f_unlink(BOOTLOADER_FILE);
+            }
+        }
+        if (fs_mounted && file_exists(BOOTLOADER_DUALBOOT_FILE))
+        {
+            if (get_ofw_is_present()) {
+                enable_screen();
+                screen_initialized = true;
+                // Flash bank 1
+                gw_gui_draw_text(10, 50, "Updating bootloader", RGB24_TO_RGB565(0, 255, 0));
+                if (update_intflash(1, BOOTLOADER_DUALBOOT_OFFSET, BOOTLOADER_DUALBOOT_FILE, show_flash_progress_cb)) {
+                    gw_gui_draw_text(10, 50, "Bootloader update done", RGB24_TO_RGB565(0, 255, 0));
+                } else {
+                    gw_gui_draw_text(10, 50, "Bootloader update failed", RGB24_TO_RGB565(255, 0, 0));
+                    fs_mounted = false;
+                }
+            } else {
+                // delete useless bootloader file
+                f_unlink(BOOTLOADER_DUALBOOT_FILE);
+            }
+        }
         if (fs_mounted && file_exists(INTFLASH_1_UPDATE_FILE))
         {
             enable_screen();
             screen_initialized = true;
             // Flash bank 1
             gw_gui_draw_text(10, 50, "Writing firmware in intflash bank1", RGB24_TO_RGB565(0, 255, 0));
-            if (update_intflash(1, INTFLASH_1_UPDATE_FILE, show_flash_progress_cb)) {
+            if (update_intflash(1, 0, INTFLASH_1_UPDATE_FILE, show_flash_progress_cb)) {
                 gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
             } else {
                 gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));
@@ -226,7 +267,7 @@ void firmware_update_main(void)
             screen_initialized = true;
             // Flash bank 2
             gw_gui_draw_text(10, 50, "Writing firmware in intflash bank2", RGB24_TO_RGB565(0, 255, 0));
-            if (update_intflash(2, INTFLASH_2_UPDATE_FILE, show_flash_progress_cb)) {
+            if (update_intflash(2, 0, INTFLASH_2_UPDATE_FILE, show_flash_progress_cb)) {
                 gw_gui_draw_text(10, 50, "Firmware update done", RGB24_TO_RGB565(0, 255, 0));
             } else {
                 gw_gui_draw_text(10, 50, "Flash update failed", RGB24_TO_RGB565(255, 0, 0));

@@ -7,6 +7,8 @@
 #include "tar.h"
 
 #define BLOCKSIZE 512  // TAR block size
+#define FILE_BUFFER_BLOCKS 128
+#define FILE_BUFFER_SIZE (BLOCKSIZE * FILE_BUFFER_BLOCKS)
 
 /* Create a directory, including parent directories if necessary */
 static FRESULT create_dir(const char *path) {
@@ -106,7 +108,7 @@ static int is_end_of_archive(const char *p) {
 
 /* Extract a TAR file from FatFs */
 bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset, progress_callback_t progress_callback) {
-    char block[BLOCKSIZE];
+    char buffer[FILE_BUFFER_SIZE];
     char tmp_path[256];
     char file_path[256];
     bool success = true;
@@ -131,11 +133,11 @@ bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset
     unsigned long current_position = 0;
 
     // Read blocks from the TAR file
-    while ((res = f_read(&tar_file, block, BLOCKSIZE, &br)) == FR_OK && br == BLOCKSIZE) {
+    while ((res = f_read(&tar_file, buffer, BLOCKSIZE, &br)) == FR_OK && br == BLOCKSIZE) {
         current_position += BLOCKSIZE;
 
         // Check for end of archive
-        if (is_end_of_archive(block)) {
+        if (is_end_of_archive(buffer)) {
             if (progress_callback) {
                 progress_callback(100, file_path);
             }
@@ -143,15 +145,15 @@ bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset
         }
 
         // Verify the checksum
-        if (!verify_checksum(block)) {
+        if (!verify_checksum(buffer)) {
             success = false;
             break;
         }
 
         // Get file name and size
-        strncpy(tmp_path, block, 100);
+        strncpy(tmp_path, buffer, 100);
         tmp_path[100] = '\0';  // Ensure null-termination
-        unsigned long file_size = parseoct(block + 124, 12);
+        unsigned long file_size = parseoct(buffer + 124, 12);
 
         if (strlen(dest_path) + strlen(tmp_path) + 2 > sizeof(file_path)) {
             success = false;
@@ -164,7 +166,7 @@ bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset
         snprintf(file_path, sizeof(file_path), "%s/%s", dest_path, tmp_path);
 #pragma GCC diagnostic pop
 
-        if (block[156] == '5') {  // Directory
+        if (buffer[156] == '5') {  // Directory
             res = create_dir(file_path);
             if (res != FR_OK) {
                 break;
@@ -178,22 +180,30 @@ bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset
 
             // Write the file content
             while (file_size > 0) {
-                UINT to_read = (file_size > BLOCKSIZE) ? BLOCKSIZE : file_size;
-                res = f_read(&tar_file, block, BLOCKSIZE, &br);
-                current_position += BLOCKSIZE;
-                if (res != FR_OK || br < BLOCKSIZE) {
+                if (progress_callback) {
+                    progress_callback(0, file_path);
+                }
+
+                UINT file_blocks_remaining = ((file_size - 1) / BLOCKSIZE) + 1;
+                UINT blocks_to_read = (file_blocks_remaining > FILE_BUFFER_BLOCKS) ? FILE_BUFFER_BLOCKS : file_blocks_remaining;
+                UINT to_read = blocks_to_read * BLOCKSIZE;
+
+                res = f_read(&tar_file, buffer, to_read, &br);
+                current_position += to_read;
+                if (res != FR_OK || br < to_read) {
                     success = false;
                     f_close(&out_file);
                     break;
                 }
 
-                res = f_write(&out_file, block, to_read, &bw);
-                if (res != FR_OK || bw < to_read) {
+                UINT to_write = (file_size > to_read) ? to_read : file_size;
+                res = f_write(&out_file, buffer, to_write, &bw);
+                if (res != FR_OK || bw < to_write) {
                     f_close(&out_file);
                     break;
                 }
 
-                file_size -= to_read;
+                file_size -= to_write;
                 if (progress_callback) {
                     unsigned int percentage = (unsigned int)((current_position * 100) / total_tar_size);
                     progress_callback(percentage, file_path);
@@ -201,12 +211,6 @@ bool extract_tar(const char *tar_path, const char *dest_path, size_t data_offset
             }
 
             f_close(&out_file);
-        }
-
-        // Skip any padding
-        unsigned long skip = ((file_size + BLOCKSIZE - 1) / BLOCKSIZE) * BLOCKSIZE - file_size;
-        if (skip > 0) {
-            f_lseek(&tar_file, f_tell(&tar_file) + skip);
         }
     }
     f_close(&tar_file);

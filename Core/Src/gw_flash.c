@@ -888,6 +888,20 @@ uint32_t OSPI_GetSmallestEraseSize(void)
     return flash.config->erase_sizes[0];
 }
 
+uint32_t OSPI_GetLargestEraseSize(void)
+{
+    // Assumes that erase sizes are sorted: 4 > 3 > 2 > 1.
+    for (int i = 3; i >= 0; i--) {
+        uint32_t erase_size = flash.config->erase_sizes[i];
+
+        if (erase_size == 0) {
+            continue;
+        }
+    }
+
+    assert(0);
+}
+
 uint32_t OSPI_GetFlashSize(void)
 {
     return flash.size;
@@ -954,7 +968,11 @@ bool update_extflash(const char *path, extflash_progress_callback_t progress_cal
         return false;
     }
 
-    uint32_t block_size = OSPI_GetSmallestEraseSize();
+    if (progress_callback) {
+        progress_callback(0);
+    }
+
+    uint32_t block_size = OSPI_GetLargestEraseSize();
 
     OSPI_DisableMemoryMappedMode();
 

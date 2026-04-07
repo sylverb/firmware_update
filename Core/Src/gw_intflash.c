@@ -78,6 +78,10 @@ bool update_intflash(uint8_t bank, const char *path, flash_progress_callback_t p
         return false;
     }
 
+    if (progress_callback) {
+        progress_callback(0);
+    }
+
     uint32_t flash_address = bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE;
 
     // File is present, erase bank

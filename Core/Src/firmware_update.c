@@ -96,10 +96,30 @@ void boot_bank2(void)
     }
 }
 
+bool debounce_progress(unsigned int percentage, bool is_flash) {
+    static uint32_t debounce_time = 0;
+    uint32_t current_time = uptime_get();
+
+    if (percentage == 0 || percentage == 100 || (is_flash && percentage % 4 == 0)) {
+        debounce_time = current_time;
+        return true;
+    }
+
+    if (current_time - debounce_time < 1)
+        return false;
+
+    debounce_time = current_time;
+    return true;
+}
+
 void show_untar_progress_cb(unsigned int percentage, const char *file_name) {
-    gw_gui_draw_progress_bar(10, 80, 300, 8, percentage, RGB24_TO_RGB565(255, 255, 255), RGB24_TO_RGB565(255, 255, 255));
-    gw_gui_draw_text(10, 60, file_name, RGB24_TO_RGB565(255, 255, 255));
-    if (percentage == 100) {
+    if (!debounce_progress(percentage, false))
+        return;
+
+    if (percentage != 100) {
+        gw_gui_draw_progress_bar(10, 80, 300, 8, percentage, RGB24_TO_RGB565(255, 255, 255), RGB24_TO_RGB565(255, 255, 255));
+        gw_gui_draw_text(10, 60, file_name, RGB24_TO_RGB565(255, 255, 255));
+    } else {
         // Delete progress bar and text
         gw_gui_draw_text(10, 60, "", RGB24_TO_RGB565(255, 255, 255));
         gw_gui_draw_text(10, 80, "", RGB24_TO_RGB565(255, 255, 255));
@@ -107,9 +127,13 @@ void show_untar_progress_cb(unsigned int percentage, const char *file_name) {
 }
 
 void show_flash_progress_cb(unsigned int percentage) {
-    gw_gui_draw_progress_bar(10, 60, 300, 8, percentage, RGB24_TO_RGB565(255, 255, 255), RGB24_TO_RGB565(255, 255, 255));
+    if (!debounce_progress(percentage, true))
+        return;
+
     printf("Flashing progress: %d%%\n", percentage);
-    if (percentage == 100) {
+    if (percentage != 100) {
+        gw_gui_draw_progress_bar(10, 60, 300, 8, percentage, RGB24_TO_RGB565(255, 255, 255), RGB24_TO_RGB565(255, 255, 255));
+    } else {
         // Delete progress bar
         gw_gui_draw_text(10, 60, "", RGB24_TO_RGB565(255, 255, 255));
     }

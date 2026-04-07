@@ -71,11 +71,11 @@ static void SPI_TxByte(uint8_t data)
 }
 
 /* SPI transmit buffer */
-static void SPI_TxBuffer(uint8_t *buffer, uint16_t len)
+static void SPI_TxBuffer(const uint8_t *buffer, uint16_t len)
 {
     while (!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE))
         ;
-    HAL_SPI_Transmit(HSPI_SDCARD, buffer, len, SPI_TIMEOUT);
+    HAL_SPI_Transmit(HSPI_SDCARD, (uint8_t *)buffer, len, SPI_TIMEOUT);
 }
 
 /* SPI receive a byte */
@@ -89,20 +89,14 @@ static uint8_t SPI_RxByte(void)
     return data;
 }
 
-/* SPI receive a byte via pointer */
-static void SPI_RxBytePtr(uint8_t *buff)
-{
-    *buff = SPI_RxByte();
-}
-
 //-----[ SD Card Functions ]-----
 
 /* wait SD ready */
 static uint8_t SD_ReadyWait(void)
 {
     uint8_t res;
-    /* timeout 500ms */
-    gw_timer_on(1, 500); 
+    /* timeout 750 ms (some cards are slow to become ready) */
+    gw_timer_on(1, 750); 
     /* if SD goes ready, receives 0xFF */
     do
     {
@@ -116,15 +110,15 @@ static uint8_t SD_ReadyWait(void)
 static void SD_PowerOn(void)
 {
     uint8_t args[6];
-    uint32_t cnt = 0x1FFF;
-    /* transmit bytes to wake up */
+    /* Spec: at least 74 clock cycles with CS high after power-up; some cards need a short delay */
     DESELECT();
     for (int i = 0; i < 10; i++)
-    {
         SPI_TxByte(0xFF);
-    }
-    /* slave select */
+    HAL_Delay(2); /* Give slow cards time to power up (1–250 ms per spec) */
     SELECT();
+    /* Extra sync bytes with CS low: some cards need 1–2 clocks before the first command byte */
+    SPI_TxByte(0xFF);
+    SPI_TxByte(0xFF);
     /* make idle state */
     args[0] = CMD0; /* CMD0:GO_IDLE_STATE */
     args[1] = 0;
@@ -133,14 +127,16 @@ static void SD_PowerOn(void)
     args[4] = 0;
     args[5] = 0x95;
     SPI_TxBuffer(args, sizeof(args));
-    /* wait response */
-    while ((SPI_RxByte() != 0x01) && cnt)
+    /* wait response (time-based: some cards need >100 ms to respond) */
+    gw_timer_on(1, 200);
+    do
     {
         wdog_refresh();
-        cnt--;
-    }
+        if (SPI_RxByte() == 0x01)
+            break;
+    } while (gw_timer_status(1));
     DESELECT();
-    SPI_TxByte(0XFF);
+    SPI_TxByte(0xFF);
     PowerFlag = 1;
 }
 
@@ -160,24 +156,24 @@ static uint8_t SD_CheckPower(void)
 static bool SD_RxDataBlock(BYTE *buff, UINT len)
 {
     uint8_t token;
+    if (len == 0)
+        return true;
     /* timeout 200ms */
-    gw_timer_on(0,200);
+    gw_timer_on(0, 200);
     /* loop until receive a response or timeout */
-    do
-    {
+    do {
         token = SPI_RxByte();
     } while ((token == 0xFF) && gw_timer_status(0));
     /* invalid response */
     if (token != 0xFE)
         return false;
-    /* receive data */
-    do
-    {
-        SPI_RxBytePtr(buff++);
-    } while (len--);
-    /* discard CRC */
-    SPI_RxByte();
-    SPI_RxByte();
+
+    for (UINT i = 0; i < len; i++)
+        buff[i] = SPI_RxByte();
+
+    SPI_RxByte(); // discard CRC MSB
+    SPI_RxByte(); // discard CRC LSB
+
     return true;
 }
 
@@ -191,31 +187,31 @@ static bool SD_TxDataBlock(const uint8_t *buff, BYTE token)
         return false;
     /* transmit token */
     SPI_TxByte(token);
-    /* if it's not STOP token, transmit data */
+    /* if it's not STOP_TRAN token, transmit data and wait for response */
     if (token != 0xFD)
     {
         SPI_TxBuffer((uint8_t *)buff, 512);
         /* discard CRC */
         SPI_RxByte();
         SPI_RxByte();
-        /* receive response */
+        /* receive response (max 65 bytes) */
         while (i <= 64)
         {
             resp = SPI_RxByte();
-            /* transmit 0x05 accepted */
             if ((resp & 0x1F) == 0x05)
                 break;
             i++;
         }
-        /* recv buffer clear */
-        while (SPI_RxByte() == 0)
+        /* clear remaining response bytes (max 64 to avoid infinite loop) */
+        for (i = 0; i < 64 && SPI_RxByte() == 0; i++)
             ;
     }
-    /* transmit 0x05 accepted */
-    if ((resp & 0x1F) == 0x05)
-        return true;
-
-    return false;
+    else
+    {
+        /* STOP_TRAN: wait for card to leave busy state */
+        return (SD_ReadyWait() == 0xFF);
+    }
+    return (resp & 0x1F) == 0x05;
 }
 
 /* transmit command */
@@ -243,8 +239,8 @@ static BYTE SD_SendCmd(BYTE cmd, uint32_t arg)
     /* Skip a stuff byte when STOP_TRANSMISSION */
     if (cmd == CMD12)
         SPI_RxByte();
-    /* receive response */
-    uint8_t n = 10;
+    /* receive response (spec allows up to 8 NCR bytes; some cards need more or are slower) */
+    uint8_t n = 32;
     do
     {
         res = SPI_RxByte();
@@ -274,20 +270,20 @@ DSTATUS USER_SPI_initialize(
     /* no disk */
     if (Stat & STA_NODISK)
         return Stat;
+    /* Use slow clock before any SD traffic (required by spec; some cards fail at high speed) */
+    FCLK_SLOW();
     /* power on */
     SD_PowerOn();
     /* slave select */
     SELECT();
-
-    FCLK_SLOW();
 
     /* check disk type */
     type = 0;
     /* send GO_IDLE_STATE command */
     if (SD_SendCmd(CMD0, 0) == 1)
     {
-        /* timeout 1 sec */
-        gw_timer_on(0, 1000); 
+        /* timeout 2 s for CMD8 / ACMD41 / CMD1 (slow cards) */
+        gw_timer_on(0, 2000); 
         /* SDC V2+ accept CMD8 command, http://elm-chan.org/docs/mmc/mmc_e.html */
         if (SD_SendCmd(CMD8, 0x1AA) == 1)
         {
@@ -299,7 +295,8 @@ DSTATUS USER_SPI_initialize(
             /* voltage range 2.7-3.6V */
             if (ocr[2] == 0x01 && ocr[3] == 0xAA)
             {
-                /* ACMD41 with HCS bit */
+                /* ACMD41 with HCS bit (timeout 2 s for slow SDv2 cards) */
+                gw_timer_on(0, 2000);
                 do
                 {
                     wdog_refresh();
@@ -324,6 +321,7 @@ DSTATUS USER_SPI_initialize(
         else
         {
             /* SDC V1 or MMC */
+            gw_timer_on(0, 2000);
             type = (SD_SendCmd(CMD55, 0) <= 1 && SD_SendCmd(CMD41, 0) <= 1) ? CT_SD1 : CT_MMC;
             do
             {
@@ -437,7 +435,7 @@ DRESULT USER_SPI_read(
 
 DRESULT USER_SPI_write(
     BYTE pdrv,        /* Physical drive number (0) */
-    const BYTE *buff, /* Ponter to the data to write */
+    const BYTE *buff, /* Pointer to the data to write */
     DWORD sector,     /* Start sector number (LBA) */
     UINT count        /* Number of sectors to write (1..128) */
 )
@@ -503,7 +501,7 @@ DRESULT USER_SPI_write(
 DRESULT USER_SPI_ioctl(
     BYTE drv,  /* Physical drive number (0) */
     BYTE ctrl, /* Control command code */
-    void *buff /* Pointer to the conrtol data */
+    void *buff /* Pointer to the control data */
 )
 {
     DRESULT res;

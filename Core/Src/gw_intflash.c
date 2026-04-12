@@ -81,6 +81,10 @@ bool update_intflash(uint8_t bank, uint32_t offset, const char *path, flash_prog
         return false;
     }
 
+    if (progress_callback) {
+        progress_callback(0);
+    }
+
     uint32_t file_size = (uint32_t)f_size(&file);
     uint32_t bank_base = bank == 1 ? FLASH_BANK1_BASE : FLASH_BANK2_BASE;
 

@@ -28,6 +28,7 @@ void OSPI_ReadSR(uint8_t dest[1]);
 void OSPI_ReadCR(uint8_t dest[1]);
 const char* OSPI_GetFlashName(void);
 uint32_t OSPI_GetSmallestEraseSize(void);
+uint32_t OSPI_GetLargestEraseSize(void);
 uint32_t OSPI_GetFlashSize(void);
 
 void OSPI_Init(OSPI_HandleTypeDef *hospi);

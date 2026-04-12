@@ -897,6 +897,8 @@ uint32_t OSPI_GetLargestEraseSize(void)
         if (erase_size == 0) {
             continue;
         }
+
+        return erase_size;
     }
 
     assert(0);

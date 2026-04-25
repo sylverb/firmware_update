@@ -27,6 +27,7 @@ Core/Src/gw_ofw.c \
 Core/Src/porting/gw_alloc.c \
 Core/Src/main.c \
 Core/Src/firmware_update.c \
+Core/Src/qr_code.c \
 Core/Src/tar.c \
 Core/Src/syscalls.c \
 Core/Src/bq24072.c \

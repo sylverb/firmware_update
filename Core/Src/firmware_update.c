@@ -13,6 +13,7 @@
 #include "ff.h"
 #include "tar.h"
 #include "firmware_update.h"
+#include "qr_code.h"
 
 #define UPDATE_ARCHIVE_FILE "/retro-go_update.bin"
 #define APP_SIZE (1024 * 1024) /* Archive includes the application */
@@ -23,6 +24,18 @@
 #define INTFLASH_2_UPDATE_FILE "/update_bank2.bin"
 #define EXTFLASH_UPDATE_FILE "/update_extflash.bin"
 #define MIN_BATTERY_LEVEL 30
+
+/* Patreon invite: bottom of screen (240px), clear of status y=50 and progress y=60–88 */
+#define PATREON_QR_X       224
+#define PATREON_QR_Y       126
+#define PATREON_QR_SCALE   2
+#define PATREON_BANNER_X   10
+#define PATREON_BANNER_Y0  150
+#define PATREON_BANNER_Y1  166
+#define REBOOT_HINT_Y      216
+
+#define PATREON_URL        "https://www.patreon.com/sylverb"
+#define PATREON_URL_LABEL  "patreon.com/sylverb"
 
 extern bool fs_mounted;
 extern sdcard_hw_type_t sdcard_hw_type;
@@ -116,6 +129,45 @@ bool debounce_progress(unsigned int percentage, bool is_flash) {
     return true;
 }
 
+static void draw_patreon_qr(void)
+{
+    static uint8_t modules[QR_CODE_SIZE][QR_CODE_SIZE];
+    static bool generated = false;
+    const pixel_t black = RGB24_TO_RGB565(0, 0, 0);
+    const pixel_t white = RGB24_TO_RGB565(255, 255, 255);
+
+    if (!generated)
+        generated = qr_code_generate(PATREON_URL, modules);
+    if (!generated)
+        return;
+
+    for (int row = 0; row < QR_CODE_TOTAL_SIZE; row++) {
+        for (int col = 0; col < QR_CODE_TOTAL_SIZE; col++) {
+            int module_x = col - QR_CODE_QUIET_ZONE;
+            int module_y = row - QR_CODE_QUIET_ZONE;
+            bool quiet_zone = module_x < 0 || module_x >= QR_CODE_SIZE ||
+                              module_y < 0 || module_y >= QR_CODE_SIZE;
+            pixel_t color = (!quiet_zone && modules[module_y][module_x]) ? black : white;
+            for (int dy = 0; dy < PATREON_QR_SCALE; dy++) {
+                for (int dx = 0; dx < PATREON_QR_SCALE; dx++) {
+                    int x = PATREON_QR_X + col * PATREON_QR_SCALE + dx;
+                    int y = PATREON_QR_Y + row * PATREON_QR_SCALE + dy;
+                    if (x >= 0 && x < GW_LCD_WIDTH && y >= 0 && y < GW_LCD_HEIGHT) {
+                        framebuffer[y * GW_LCD_WIDTH + x] = color;
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void draw_patreon_banner(void)
+{
+    gw_gui_draw_text(PATREON_BANNER_X, PATREON_BANNER_Y0, "Latest G&W Retro-Go news", RGB24_TO_RGB565(255, 220, 0));
+    gw_gui_draw_text(PATREON_BANNER_X, PATREON_BANNER_Y1, PATREON_URL_LABEL, RGB24_TO_RGB565(255, 220, 0));
+    draw_patreon_qr();
+}
+
 void show_untar_progress_cb(unsigned int percentage, const char *file_name) {
     if (!debounce_progress(percentage, false))
         return;
@@ -160,6 +212,7 @@ void enable_screen()
 void firmware_update_main(void)
 {
     bool screen_initialized = false;
+    bool patreon_banner_active = false;
     int battery_level, updated_battery_level = -1;
     char battery_level_str[100];
 
@@ -206,10 +259,12 @@ void firmware_update_main(void)
     }
     else
     {
+        patreon_banner_active = true;
         enable_screen();
         screen_initialized = true;
         // Extract update archive in root folder
         gw_gui_draw_text(10, 50, "Extracting files", RGB24_TO_RGB565(0, 255, 0));
+        draw_patreon_banner();
         // Archive starts with the application and 4 bytes for application payload size, skip this
         if (extract_tar(UPDATE_ARCHIVE_FILE, "", APP_SIZE + sizeof(uint32_t), show_untar_progress_cb))
         {
@@ -316,7 +371,12 @@ void firmware_update_main(void)
     }
 
     if (screen_initialized) {
-        gw_gui_draw_text(10, 60, "Press any button to reboot", RGB24_TO_RGB565(0, 255, 0));
+        if (patreon_banner_active) {
+            draw_patreon_banner();
+            gw_gui_draw_text(10, REBOOT_HINT_Y, "Press any button to reboot", RGB24_TO_RGB565(0, 255, 0));
+        } else {
+            gw_gui_draw_text(10, 60, "Press any button to reboot", RGB24_TO_RGB565(0, 255, 0));
+        }
         while(1) {
             wdog_refresh();
             uint32_t boot_buttons = buttons_get();
